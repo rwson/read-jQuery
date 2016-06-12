@@ -1,3 +1,8 @@
+//  对着《jQuery技术内幕 深入解析jQuery架构设计与实现原理》阅读jQuery1.7.1源码
+
+/**
+ * 传入window和undefined一来可以缩短查询作用域,二来可以防止代码中被修改
+ */
 (function (window, undefined) {
 
     //  缓存window对象下的document/navigator/location对象
@@ -45,10 +50,16 @@
         //  匹配左方括号
             rvalidbraces = /(?:^|:|,)(?:\s*\[)+/g,
 
-        //  各浏览器UA正则表达式
+        //  webkit内核
             rwebkit = /(webkit)[ \/]([\w.]+)/,
+
+        //  Opera内核
             ropera = /(opera)(?:.*version)?[ \/]([\w.]+)/,
+
+        //  IE浏览器
             rmsie = /(msie) ([\w.]+)/,
+
+        //  mozilla
             rmozilla = /(mozilla)(?:.*? rv:([\w.]+))?/,
 
         //  匹配"-"的第一个小写字母或者数字
@@ -756,6 +767,10 @@
                 return true;
             },
 
+            /**
+             * 抛出一个Error
+             * @param msg   错误信息
+             */
             error: function (msg) {
                 throw new Error(msg);
             },
@@ -1088,30 +1103,38 @@
                 var i = first.length,
                     j = 0;
 
+                //  第二个参数的length属性值为number类型,把它当做一个数组处理,进行遍历
                 if (typeof second.length === "number") {
                     for (var l = second.length; j < l; j++) {
+                        //  追加到第一个对象的最后
                         first[i++] = second[j];
                     }
-
                 } else {
+                    //  第二个参数的length不是数字,可能的对象{ 0: "a", 1: "b"},把其中非undefined的值插入到第一个对象的最后
                     while (second[j] !== undefined) {
                         first[i++] = second[j++];
                     }
                 }
 
-                //  修改第一个数组的length属性
+                //  修改第一个数组的length属性(first可能不是真正的数组,所以需要手动修改)
                 first.length = i;
 
-                //  返回处理后的数组
+                //  返回处理后的对象
                 return first;
             },
 
+            /**
+             * 过滤掉数组中不满足过滤条件的元素(ES5中的filter)
+             * @param elems         待过滤的数组
+             * @param callback      判断过滤条件
+             * @param inv           不传的或者传入false时候,返回满足过滤条件(callback返回true)的数组,否则返回一个不满足过滤条件的数组
+             * @returns {Array}
+             */
             grep: function (elems, callback, inv) {
                 var ret = [], retVal;
                 inv = !!inv;
 
-                // Go through the array, only saving the items
-                // that pass the validator function
+                //  遍历这个数组,并且拿callback返回值和inv作比较
                 for (var i = 0, length = elems.length; i < length; i++) {
                     retVal = !!callback(elems[i], i);
                     if (inv !== retVal) {
@@ -1174,54 +1197,76 @@
                 return ret.concat.apply([], ret);
             },
 
-            // A global GUID counter for objects
+            /**
+             * 全局计数器,用于事件模块和缓存模块
+             * 事件模块: 每个事件的监听回调都会被设置一个guid属性,用来标识这个函数
+             * 缓存模块: 在每个DOM元素加上一个唯一标识,来关联相关缓存
+             */
             guid: 1,
 
-            // Bind a function to a context, optionally partially applying any
-            // arguments.
+            /**
+             * 修改函数的执行上下文(this)
+             * @param fn        被修改this的函数指针
+             * @param context   上下文对象
+             * 参数有两种形式:
+             *     $.proxy(fn, context);
+             *     $.proxy(context, name);
+             * @returns {*}
+             */
             proxy: function (fn, context) {
+                //  如果context传入的是string类型的,说明参数形式为$.proxy(context, name),这边修正为$.proxy(fn, context)
                 if (typeof context === "string") {
                     var tmp = fn[context];
                     context = fn;
                     fn = tmp;
                 }
 
-                // Quick check to determine if target is callable, in the spec
-                // this throws a TypeError, but we will just return undefined.
+                //  函数不是function类型
                 if (!jQuery.isFunction(fn)) {
                     return undefined;
                 }
 
-                // Simulated bind
+                //  可能不止两个参数,这边从下标为2的开始截取arguments
                 var args = slice.call(arguments, 2),
+                //  创建一个代理函数,在该代理函数中调用fn,并通过apply修改执行上下文
                     proxy = function () {
                         return fn.apply(context, args.concat(slice.call(arguments)));
                     };
 
-                // Set the guid of unique handler to the same of original handler, so it can be removed
+                //  设置唯一的guid
                 proxy.guid = fn.guid = fn.guid || proxy.guid || jQuery.guid++;
 
                 return proxy;
             },
 
-            // Mutifunctional method to get and set values to a collection
-            // The value/s can optionally be executed if it's a function
+            /**
+             * 为集合中的元素设置一个或者多个属性值,获取第一个元素的属性值,该方法为(.css/.attr/.prop)三个方法提供支持,且调用时传入的exec都为true
+             * @param elems     元素集合,通常为jQuery对象
+             * @param key       属性名或者含有键值对的对象
+             * @param value     属性值,当参数key为对象时该参数为undefined
+             * @param exec      布尔值,标识是否执行回调
+             * @param fn        回调,同时支持对属性进行读写
+             * @param pass      布尔值,功能和exec重叠,可忽略
+             * @returns {*}
+             */
             access: function (elems, key, value, exec, fn, pass) {
                 var length = elems.length;
 
-                // Setting many attributes
+                //  如果第二个参数是一个对象,表示要设置多个属性,遍历第二个参数,递归调用jQuery.access
                 if (typeof key === "object") {
                     for (var k in key) {
                         jQuery.access(elems, k, key[k], exec, fn, value);
                     }
+                    //  返回元素集合
                     return elems;
                 }
 
-                // Setting one attribute
+                //  如果参数value不是undefined,表示要设置单个属性
                 if (value !== undefined) {
-                    // Optionally, function values get executed if exec is true
+                    //  判断value是否是函数类型,并且exec为true
                     exec = !pass && exec && jQuery.isFunction(value);
 
+                    //  遍历elems集合,为每个函数调用fn,如果exec为true且value为function,执行函数value
                     for (var i = 0; i < length; i++) {
                         fn(elems[i], key, exec ? value.call(elems[i], i, fn(elems[i], key)) : value, pass);
                     }
@@ -1229,16 +1274,23 @@
                     return elems;
                 }
 
-                // Getting an attribute
+                //  读取一个属性,如果elems不为空,则为第一个元素调用回调函数fn,读取参数key对应的属性值,否则返回undefined
                 return length ? fn(elems[0], key) : undefined;
             },
 
+            /**
+             * 返回当前时间的时间戳
+             * @returns {number}
+             */
             now: function () {
                 return ( new Date() ).getTime();
             },
 
-            // Use of jQuery.browser is frowned upon.
-            // More details: http://docs.jquery.com/Utilities/jQuery.browser
+            /**
+             * 检测当前浏览器的ua信息
+             * @param ua    当前浏览器的UA字符串
+             * @returns {{browser: (*|string), version: (*|string)}}
+             */
             uaMatch: function (ua) {
                 ua = ua.toLowerCase();
 
@@ -4240,11 +4292,8 @@
     });
 
 
-    /*!
-     * Sizzle CSS Selector Engine
-     *  Copyright 2011, The Dojo Foundation
-     *  Released under the MIT, BSD, and GPL Licenses.
-     *  More information: http://sizzlejs.com/
+    /**
+     * Sizzle选择器模块
      */
     (function () {
 
@@ -4267,21 +4316,55 @@
             return 0;
         });
 
+        /**
+         * 选择器入口
+         * @param selector      css选择器表达式
+         * @param context       DOM元素或者文档对象,限定上下文,提高查找效率
+         * @param results       结果集,如果传入了,会把满足查询条件的DOM元素放到里面作为返回值
+         * @param seed          元素集合,将从该元素集合中过滤出匹配选择器表达式的元素集合
+         * @returns {*}
+         * @constructor
+         */
         var Sizzle = function (selector, context, results, seed) {
+
+            //  修正results和context
             results = results || [];
             context = context || document;
 
+            //  备份上下文context,在selector为"#id"开头的情况下,context可能会被修改成"#id"所匹配的元素
             var origContext = context;
 
+            /**
+             * nodeType的对应关系:
+             * 1:   ELEMENT_NODE元素节点(标签)
+             * 3:   TEXT_NODE文本节点(标签文章)
+             * 7:   PROCESSING_INSTRUCTION_NODE(XML声明)
+             * 8:   COMMENT_NODE注释节点<!--...-->
+             * 9:   DOCUMENT_NODE(document节点)
+             * 10:  DOCUMENT_TYPE_NODE(doctype声明)
+             * 11:  DOCUMENT_FRAGMENT_NODE(domFragement节点)
+             *
+             * 所以下面的判断就是判断context不是一个标签或者document节点
+             */
             if (context.nodeType !== 1 && context.nodeType !== 9) {
                 return [];
             }
 
+            //  如果selector为空或者非字符串,忽略本次查询,直接返回results
             if (!selector || typeof selector !== "string") {
                 return results;
             }
 
-            var m, set, checkSet, extra, ret, cur, pop, i,
+            var m,          //  存放正则chunker每次匹配选择器表达式selector的结果
+
+            //  从右往左查询中,set称为候选集,是最后一个块级表达式匹配的元素集合,其他块表达式和块间关系符("+",">"等)对checkSet进行过滤
+                set,
+                checkSet,
+                extra,
+                ret,
+                cur,
+                pop,
+                i,
                 prune = true,
                 contextXML = Sizzle.isXML(context),
                 parts = [],
@@ -4414,6 +4497,11 @@
             return results;
         };
 
+        /**
+         * 排序,去除重复的项
+         * @param results   存放结果的集合
+         * @returns {*}
+         */
         Sizzle.uniqueSort = function (results) {
             if (sortOrder) {
                 hasDuplicate = baseHasDuplicate;
@@ -4431,14 +4519,33 @@
             return results;
         };
 
-        Sizzle.matches = function (expr, set) {
-            return Sizzle(expr, null, null, set);
+        /**
+         * 使用指定的正则表达式expr对元素集合setCollection进行过滤
+         * @param expr    指定的正则表达式
+         * @param set     元素集合
+         * @returns {*}
+         */
+        Sizzle.matches = function (expr, setCollection) {
+            return Sizzle(expr, null, null, setCollection);
         };
 
+        /**
+         * 便捷方法判断某个元素node是否匹配选择器表达式expr
+         * @param node      具体的元素
+         * @param expr      选择器表达式
+         * @returns {boolean}
+         */
         Sizzle.matchesSelector = function (node, expr) {
             return Sizzle(expr, null, null, [node]).length > 0;
         };
 
+        /**
+         * 对块表达式进行查找
+         * @param expr
+         * @param context
+         * @param isXML
+         * @returns {*}
+         */
         Sizzle.find = function (expr, context, isXML) {
             var set, i, len, match, type, left;
 
@@ -4474,6 +4581,14 @@
             return {set: set, expr: expr};
         };
 
+        /**
+         * 用块表达式过滤元素集合
+         * @param expr
+         * @param set
+         * @param inplace
+         * @param not
+         * @returns {*}
+         */
         Sizzle.filter = function (expr, set, inplace, not) {
             var match, anyFound,
                 type, found, item, filter, left,
@@ -4566,14 +4681,18 @@
             return curLoop;
         };
 
+        /**
+         * 异常
+         * @param msg   错误详细信息
+         */
         Sizzle.error = function (msg) {
             throw new Error("Syntax error, unrecognized expression: " + msg);
         };
 
         /**
-         * Utility function for retreiving the text value of an array of DOM nodes
-         * @param {Array|Element} elem
-         */
+         * 获取DOM元素集合的文本内容
+         * @param elem  DOM元素集合
+         * */
         var getText = Sizzle.getText = function (elem) {
             var i, node,
                 nodeType = elem.nodeType,
@@ -4609,9 +4728,13 @@
             return ret;
         };
 
+        //  正则表达式模块
         var Expr = Sizzle.selectors = {
+
+            //  块表达式
             order: ["ID", "NAME", "TAG"],
 
+            //  正则表达式集,用于匹配和解析表达式
             match: {
                 ID: /#((?:[\w\u00c0-\uFFFF\-]|\\.)+)/,
                 CLASS: /\.((?:[\w\u00c0-\uFFFF\-]|\\.)+)/,
@@ -4625,11 +4748,13 @@
 
             leftMatch: {},
 
+            //  属性名修正函数集
             attrMap: {
                 "class": "className",
                 "for": "htmlFor"
             },
 
+            //  属性名读取函数集
             attrHandle: {
                 href: function (elem) {
                     return elem.getAttribute("href");
@@ -4639,6 +4764,7 @@
                 }
             },
 
+            //  块表达式之间的关联
             relative: {
                 "+": function (checkSet, part) {
                     var isPartStr = typeof part === "string",
@@ -4729,6 +4855,7 @@
                 }
             },
 
+            //  块表达式查找函数集
             find: {
                 ID: function (match, context, isXML) {
                     if (typeof context.getElementById !== "undefined" && !isXML) {
@@ -4760,6 +4887,8 @@
                     }
                 }
             },
+
+            //  块级表达式预过滤集
             preFilter: {
                 CLASS: function (match, curLoop, inplace, result, not, isXML) {
                     match = " " + match[1].replace(rBackslash, "") + " ";
@@ -4866,6 +4995,7 @@
                 }
             },
 
+            //  伪类过滤函数集合
             filters: {
                 enabled: function (elem) {
                     return elem.disabled === false && elem.type !== "hidden";
@@ -4955,6 +5085,8 @@
                     return elem === elem.ownerDocument.activeElement;
                 }
             },
+
+            //  伪类过滤函数集
             setFilters: {
                 first: function (elem, i) {
                     return i === 0;
@@ -4988,6 +5120,8 @@
                     return match[3] - 0 === i;
                 }
             },
+
+            //  块表达式过滤函数集
             filter: {
                 PSEUDO: function (elem, match, i, array) {
                     var name = match[1],
@@ -5376,6 +5510,7 @@
             div = null;
         })();
 
+        //  浏览器支持HTML5
         if (document.querySelectorAll) {
             (function () {
                 var oldSizzle = Sizzle,
@@ -9729,21 +9864,10 @@
     });
 
 
-// Expose jQuery to the global object
+    //  把jQuery挂载到window下面做全局变量
     window.jQuery = window.$ = jQuery;
 
-// Expose jQuery as an AMD module, but only for AMD loaders that
-// understand the issues with loading multiple versions of jQuery
-// in a page that all might call define(). The loader will indicate
-// they have special allowances for multiple jQuery versions by
-// specifying define.amd.jQuery = true. Register as a named module,
-// since jQuery can be concatenated with other files that may use define,
-// but not use a proper concatenation script that understands anonymous
-// AMD modules. A named AMD is safest and most robust way to register.
-// Lowercase jquery is used because AMD module names are derived from
-// file names, and jQuery is normally delivered in a lowercase file name.
-// Do this after creating the global so that if an AMD module wants to call
-// noConflict to hide this version of jQuery, it will work.
+    //  AMD模式加载(requirejs)
     if (typeof define === "function" && define.amd && define.amd.jQuery) {
         define("jquery", [], function () {
             return jQuery;
