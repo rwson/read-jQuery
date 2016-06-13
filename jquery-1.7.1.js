@@ -4307,10 +4307,7 @@
             rReturn = /\r\n/g,
             rNonWord = /\W/;
 
-// Here we check if the JavaScript engine is using some sort of
-// optimization where it does not always call our comparision
-// function. If that is the case, discard the hasDuplicate value.
-//   Thus far that includes Google Chrome.
+        //  ChromeV8引擎对sort的优化(也不知道是什么鬼)
         [0, 0].sort(function () {
             baseHasDuplicate = false;
             return 0;
@@ -4358,8 +4355,14 @@
             var m,          //  存放正则chunker每次匹配选择器表达式selector的结果
 
             //  从右往左查询中,set称为候选集,是最后一个块级表达式匹配的元素集合,其他块表达式和块间关系符("+",">"等)对checkSet进行过滤
+            //  从左往右查询中,set是当前块表达式的元素集合,也就是下一个块表达式查找的上下文
                 set,
+
+            //  从右往左查询中,初始值为set的副本,其他块表达式会根据块间关系符进行过滤(根据相应关系符将其中元素设置成父元素、兄弟元素,过滤不满足条件的元素)
+            //  从左往右查询不涉及该变量,在Sizzle最后将checkSet和set指向同一个数组(统一筛选合并匹配元素的代码)
                 checkSet,
+
+            //  用于选择器表达式的第一个逗号之后的其他并列选择器表达式
                 extra,
                 ret,
                 cur,
@@ -4530,7 +4533,7 @@
         };
 
         /**
-         * 便捷方法判断某个元素node是否匹配选择器表达式expr
+         * 判断某个元素node是否匹配选择器表达式expr
          * @param node      具体的元素
          * @param expr      选择器表达式
          * @returns {boolean}
