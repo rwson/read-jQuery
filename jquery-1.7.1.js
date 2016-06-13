@@ -4297,6 +4297,9 @@
      */
     (function () {
 
+        /**
+         * 分割器正则,提取选择器表达式中的块表达式和块间关系符
+         */
         var chunker = /((?:\((?:\([^()]+\)|[^()]+)+\)|\[(?:\[[^\[\]]*\]|['"][^'"]*['"]|[^\[\]'"]+)+\]|\\.|[^ >+~,(\[\\]+)+|[>+~])(\s*,\s*)?((?:.|\r|\n)*)/g,
             expando = "sizcache" + (Math.random() + '').replace('.', ''),
             done = 0,
@@ -4364,20 +4367,48 @@
 
             //  用于选择器表达式的第一个逗号之后的其他并列选择器表达式
                 extra,
+
+            //  只在从右往左的查询过程中用到
                 ret,
+
+            //  parts.pop()返回的那一项,块间关系符
                 cur,
+
+            //  只在从右往左的查询过程中用到,表示单个表达式
                 pop,
+
                 i,
+
+            //  只在从右往左的查询过程中用到,表示候选集是否需要筛选
                 prune = true,
+
+            //  判断context上下文是否为XML
                 contextXML = Sizzle.isXML(context),
+
+            //  存放了正则chunker从选择器表达式中提取的块表达式和块关系符号
                 parts = [],
+
+            //  存储提取后剩余的部分,刚进Sizzle处理的时候是selector
                 soFar = selector;
 
-            // Reset the position of the chunker regexp (start from head)
+            //  解析块表达式和块间关系符
             do {
+
+                //  每次都从剩余部分的开头开始匹配,也可以通过chunker.lastIndex = 0;来达到相同目的
                 chunker.exec("");
                 m = chunker.exec(soFar);
 
+                /**
+                 * 如果匹配到选择器表达式的剩余部分,把匹配出来的第三项给soFar,只道匹配到m不存在,通过这样的遍历可以过滤掉一些空格等无效字符串
+                 * chunker.exec("#id ul>li:gt(2)")
+                 *      -> 最后分解结果: parts: [#id,ul,>,li:gt(2)] extra: undefined
+                 *
+                 * chunker.exec("#id ul>li:gt(2), div.menu")
+                 *      -> 最后分解结果: parts: [#id,ul,>,li:gt(2)] extra: div.menu
+                 *
+                 * 将第一个分组中的块表达式和块表达式之间的关系插入parts
+                 * 如果第二个分组不是空字符串,即并列选择器表达式,则将第三部分保存在extra中,最后结束循环
+                 */
                 if (m) {
                     soFar = m[3];
 
@@ -4390,16 +4421,22 @@
                 }
             } while (m);
 
+            //  如果存在块间关系符和位置伪类,则从左往右查找$("div span:first")
+            //  origPOS定义了所有支持的伪类
             if (parts.length > 1 && origPOS.exec(selector)) {
 
+                //  parts长度为2,且第一项为块间关系符
                 if (parts.length === 2 && Expr.relative[parts[0]]) {
+                    //  直接调用posProcess查询满足匹配条件的DOM元素
                     set = posProcess(parts[0] + parts[1], context, seed);
 
                 } else {
+                    //  从parts头部弹出第一个表达式,递归调用Sizzle
                     set = Expr.relative[parts[0]] ?
                         [context] :
                         Sizzle(parts.shift(), context);
 
+                    //  从左往右遍历数组parts的其他块表达式和块间关系符,调用posProcess查找匹配元素集合
                     while (parts.length) {
                         selector = parts.shift();
 
@@ -4412,47 +4449,60 @@
                 }
 
             } else {
-                // Take a shortcut and set the context if the root selector is an ID
-                // (but not if it'll be faster if the inner selector is an ID)
+                //  如果第一个和最后一个块选择器都为id类型
                 if (!seed && parts.length > 1 && context.nodeType === 9 && !contextXML &&
                     Expr.match.ID.test(parts[0]) && !Expr.match.ID.test(parts[parts.length - 1])) {
 
+                    //  查询第一个块表达式
                     ret = Sizzle.find(parts.shift(), context, contextXML);
+
+                    //  修正上下文对象context,这样可以缩小查找范围,提高查找性能
                     context = ret.expr ?
                         Sizzle.filter(ret.expr, ret.set)[0] :
                         ret.set[0];
                 }
 
                 if (context) {
+                    //  从右往左开始查询(查找最后一个块级表达式匹配的元素集合,得到映射集checkSet,候选集set)
+
                     ret = seed ?
                     {expr: parts.pop(), set: makeArray(seed)} :
+                        //  每次都查询最后一项
                         Sizzle.find(parts.pop(), parts.length === 1 && (parts[0] === "~" || parts[0] === "+") && context.parentNode ? context.parentNode : context, contextXML);
 
+                    //  如果还有剩余部分,调用Sizzle.filter对查找出来的结果进行过滤
                     set = ret.expr ?
                         Sizzle.filter(ret.expr, ret.set) :
                         ret.set;
 
+                    //  如果parts数组中还存在其他元素,即块表达式直接的关系符或块表达式,通过makeArray创建一个副本给checkSet
                     if (parts.length > 0) {
                         checkSet = makeArray(set);
 
+                        //  如果parts为空,则说明选择器表达式中只有一个块表达式,此时设置prune,表示不需要过滤
                     } else {
                         prune = false;
                     }
 
+                    //  从右往左查询,遍历剩余的块表达式和块间关系符,对checkSet进行过滤
                     while (parts.length) {
                         cur = parts.pop();
                         pop = cur;
 
+                        //  如果弹出的不是块间关系符,就认为是后代关系符
                         if (!Expr.relative[cur]) {
                             cur = "";
                         } else {
                             pop = parts.pop();
                         }
 
+                        //  如果pop为空,说明parts数组已经pop完了,直接把当前上下文对象context给pop
                         if (pop == null) {
                             pop = context;
                         }
 
+                        //  pop的作用就是作为过滤checkSet的上下文
+                        //  Expr.relative[块间关系符 cur](映射集 checkSet, 左侧块表达式 pop, contextXML);
                         Expr.relative[cur](checkSet, pop, contextXML);
                     }
 
@@ -4460,6 +4510,8 @@
                     checkSet = parts = [];
                 }
             }
+
+            //  根据checkSet过滤set,将最后的匹配结果放入结果集results
 
             if (!checkSet) {
                 checkSet = set;
@@ -5787,38 +5839,51 @@
             };
         }
 
+        /**
+         * 判断当前元素是否为XML节点
+         * @param elem
+         * @returns {boolean}
+         */
         Sizzle.isXML = function (elem) {
-            // documentElement is verified for cases where it doesn't yet exist
-            // (such as loading iframes in IE - #4833) 
+            //  documentElement返回文档对象的根元素,在HTML文档中,只有一个根元素<html>
             var documentElement = (elem ? elem.ownerDocument || elem : 0).documentElement;
 
+            //  判断该标签名是否为html
             return documentElement ? documentElement.nodeName !== "HTML" : false;
         };
 
+        /**
+         * 在指定的上下文context数组下,查找匹配selector的集合,且支持位置伪类
+         * @param selector  选择器
+         * @param context   上下文数组
+         * @param seed
+         * @returns {*|{PSEUDO, CHILD, ID, TAG, CLASS, ATTR, POS}|Array.<T>}
+         */
         var posProcess = function (selector, context, seed) {
             var match,
                 tmpSet = [],
                 later = "",
-                root = context.nodeType ? [context] : context;
+                root = context.nodeType ? [context] : context;  //  如果context.nodeType存在,说明是单个DOM对象,将被放在一个数组中
 
-            // Position selectors must be done after the filter
-            // And so must :not(positional) so we move all PSEUDOs to the end
+            //  匹配selector中的伪类,累加在later中,并且将它们删除
             while ((match = Expr.match.PSEUDO.exec(selector))) {
                 later += match[0];
                 selector = selector.replace(Expr.match.PSEUDO, "");
             }
 
+            //  删除伪类后的选择器表达式只剩下一个块间关系符,就追加一个通配符
             selector = Expr.relative[selector] ? selector + "*" : selector;
 
+            //  遍历上下文数组,查找删除伪类选择器匹配的元素集合,并且将结果放在tmpSet中
             for (var i = 0, l = root.length; i < l; i++) {
                 Sizzle(selector, root[i], tmpSet, seed);
             }
 
+            //  对tmpSet进行过滤
             return Sizzle.filter(later, tmpSet);
         };
 
-// EXPOSE
-// Override sizzle attribute retrieval
+        //  和jQuery进行关联
         Sizzle.attr = jQuery.attr;
         Sizzle.selectors.attrMap = {};
         jQuery.find = Sizzle;
@@ -5828,7 +5893,6 @@
         jQuery.text = Sizzle.getText;
         jQuery.isXMLDoc = Sizzle.isXML;
         jQuery.contains = Sizzle.contains;
-
 
     })();
 
